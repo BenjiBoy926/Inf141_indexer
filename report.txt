@@ -1,0 +1,3 @@
+Number of documents: 6 
+Number of tokens:    8 
+Index storage size:  2.04KB 
