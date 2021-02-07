@@ -82,4 +82,3 @@ if __name__ == '__main__':
     f.write(f"Number of tokens:    {len(data[1])} \n")
     f.write(f"Index storage size:  {sys.getsizeof(data[1]) / 100}KB \n")
     f.close()
-
