@@ -1,5 +1,5 @@
 from bs4 import BeautifulSoup
-from tokenizer import PartA as tk
+from Inf141_tokenizer import PartA as tk
 from posting import Posting
 from pathlib import Path
 import json
