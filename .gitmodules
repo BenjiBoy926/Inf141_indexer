@@ -1,3 +1,6 @@
 [submodule "Inf141_tokenizer"]
 	path = Inf141_tokenizer
 	url = https://github.com/BenjiBoy926/Inf141_tokenizer.git
+[submodule "stopwatch"]
+	path = stopwatch
+	url = https://github.com/BenjiBoy926/Python-Stopwatch.git
