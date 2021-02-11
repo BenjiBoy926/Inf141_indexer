@@ -51,8 +51,8 @@ def indexJsonsInDirectory(directory, max_docs):
                 index_file.close()
                 raise
 
-            if total_docs >= max_docs:
-                break
+        if total_docs >= max_docs:
+            break
 
     index_file.close()
 
