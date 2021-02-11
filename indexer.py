@@ -4,34 +4,61 @@ from posting import Posting
 from pathlib import Path
 import json
 import sys
+import os
 
 
 # Returns a tuple where the first item is the number of documents loaded
 # and the second item is the index of all the documents
 def indexJsonsInDirectory(directory):
-    index = {}
     num_docs = 0
+    unique_terms = 0
+    discovered_tokens = []
+    index_file = open("index.txt", "w")
 
     # Iterate over all folders in the dev path
     for path in Path(directory).iterdir():
         # Iterate over all json files in the current folder
         for json_file in Path(path).iterdir():
-            print(f"Processing file {json_file}")
+            try:
+                print(f"Loading file {json_file}")
 
-            # Open the file and load it as a json
-            file = open(json_file, "r")
-            json_data = json.load(file)
-            file.close()
+                # Open the file and load it as a json
+                file = open(json_file, "r")
+                json_data = json.load(file)
+                file.close()
 
-            # Index the current json and merge it with the overall index
-            current_index = indexJson(json_data)
-            index = mergeIndices(index, current_index)
+                print(f"Indexing file {json_file}")
 
-            # Increment number of documents
-            num_docs += 1
+                # Index the current json
+                index = indexJson(json_data)
 
-    return num_docs, index
+                print(f"Storing index for file {json_file}")
 
+                # Write the index to the file
+                writeIndexToFile(index, index_file)
+
+                print(f"Searching for new terms discovered")
+
+                # Check for new tokens that have been discovered and increment the number found
+                for token in index:
+                    if token not in discovered_tokens:
+                        discovered_tokens.append(token)
+                        unique_terms += 1
+
+                # Increment number of documents
+                num_docs += 1
+            except Exception:
+                index_file.close()
+                raise
+
+    index_file.close()
+    return num_docs, unique_terms
+
+
+def writeIndexToFile(index, index_file):
+    for token, postings in index.items():
+        for post in postings:
+            index_file.write(f"{token} {post.document} {post.score} \n")
 
 # Merge two indices by adding the postings from index2 to the list of postings in index1
 def mergeIndices(index1, index2):
@@ -79,6 +106,6 @@ if __name__ == '__main__':
 
     f = open("report.txt", "w")
     f.write(f"Number of documents: {data[0]} \n")
-    f.write(f"Number of tokens:    {len(data[1])} \n")
-    f.write(f"Index storage size:  {sys.getsizeof(data[1]) / 100}KB \n")
+    f.write(f"Number of tokens:    {data[1]} \n")
+    f.write(f"Index storage size:  {os.path.getsize('index.txt') / 100} KB \n")
     f.close()
