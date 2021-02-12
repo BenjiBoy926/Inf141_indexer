@@ -1,3 +1,5 @@
+# TODO: we need the Posting to have the docID as an integer,
+#  otherwise we will never be able to get the required speed of 300 ms
 class Posting:
     def __init__(self, document, score):
         self.document = document

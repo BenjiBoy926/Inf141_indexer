@@ -1,3 +1,6 @@
-Average file read time:  0.0 
-Average indexing time:   0.06902837753295898 
+Average file read time:  0.0003777384757995605 
+Average indexing time:   0.013239970207214355 
 Average file write time: 0.0 
+Total documents:         200 
+Total tokens:            10001 
+Index size:              3320033 KB 
