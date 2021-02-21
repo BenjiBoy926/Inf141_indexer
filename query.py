@@ -4,6 +4,8 @@ from Inf141_tokenizer import PartA as tk
 from collections import defaultdict
 from stopwatch.stopwatch import Stopwatch
 from indexer import lexicon
+import serializer as sz
+from posting import Posting
 
 # TODO: multithreading to search indices in different lexical ranges at the same time?
 def searchQuery(query, index, lex):
@@ -11,22 +13,21 @@ def searchQuery(query, index, lex):
     results = dict()
 
     for token in query:
-        results[token] = searchToken(token, index, lex)
+        indexItem = searchToken(token, index, lex)
+        results[indexItem[0]] = indexItem[2]
 
     # Return only urls of sites that have ALL the query words
+    # At this point, results changes from a dictionary mapping the token-posting_list pairs to only a list of postings
     if len(query) > 1:
-        results = dictIntersect([dictionary for dictionary in results.values()])
+        results = [postings for postings in results.values()]
+        results = mergePostingLists(results)
     else:
         results = results[query[0]]
 
-    return sorted(results.items(), key=lambda t: t[1], reverse=True)
+    return sorted(results, key=lambda t: t.score, reverse=True)
 
 
 def searchToken(token, index, lex):
-    # Process in order of increasing frequency (why we need document frequency in the index)
-    # AND, OR, NOT?
-    urls = defaultdict(int)
-
     # Check if the token searched for is in the lexicon
     if token in lex:
         # Seek to the place in the file that the lexicon specifies
@@ -34,26 +35,22 @@ def searchToken(token, index, lex):
 
         # Read the line and split it on spaces
         line = index.readline().split(" ")
+        return sz.deserializeIndexItem(line)
+    else:
+        return token, 0, []
 
-        # Loop from the first posting at index 2
-        for i in range(2, len(line)):
+def mergePostingLists(postingLists):
+    ret = []
 
-            # Take all urls
-            if i % 2 == 0:
-                url = line[i]
-                freq = int(line[i + 1])
-                urls[url] += freq
+    # Loop through the postings in the first list
+    for post in postingLists[0]:
+        # Generate a list of true/false that are true if the positing is in the other list
+        urls_in_others = [post.document == other.document for other in postingLists[1:]]
 
-    return urls
-
-
-def dictIntersect(dictList):
-    ret = {}
-
-    for key in dictList[0]:
-        results = [key in dictionary for dictionary in dictList[1:]]
-        if all(results):
-            ret[key] = sum([dictionary[key] for dictionary in dictList])
+        # If the posting is in all other positing lists, add a new posting to the result
+        if all(urls_in_others):
+            score = sum([p.score for p in postingLists])
+            ret.append(Posting(post.document, score))
 
     return ret
 
@@ -67,9 +64,9 @@ def resultString(query, results, t):
     if size > 0:
         string += f"Top results:\n"
         for i in range(size):
-            string += f"{results[i][0]}\n"
+            string += f"{results[i].document}\n"
     else:
-        print("No results found\n")
+        string += "No results found\n"
 
     return string
 

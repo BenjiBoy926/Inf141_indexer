@@ -8,6 +8,7 @@ import os
 import sys
 from collections import defaultdict
 import psutil
+import serializer as sz
 
 # TODO: store term and collection statistics at the top of the index (lecture 18)?
 # TODO: split inverted index into alphabet ranges (lecture 18)?
@@ -63,23 +64,14 @@ def indexJsonsInDirectory(directory, max_docs):
     writeIndexToFile(total_index, f"indices/index{current_index}.txt")
     mergeIndicesInDirectory("indices", "index.txt")
 
+    # Temporary until we get the index merge to work
+    writeIndexToFile(total_index, "index.txt")
+
 
 # Write the index to the given file
 def writeIndexToFile(index, index_file):
     index_file = open(index_file, "w")
-
-    for token, postings in index:
-        # Sort postings by document
-        postings = sorted(postings, key=lambda p: p.document)
-
-        string = f"{token} {len(postings)}"
-
-        for post in postings:
-            string += f" {post.document} {post.score}"
-
-        index_file.write(string)
-        index_file.write("\n")
-
+    index_file.write(sz.serializeIndex(index))
     index_file.close()
 
 # Open all files in the directory as index files, merge them, and output them to the fout directory
@@ -88,7 +80,7 @@ def mergeIndicesInDirectory(directory, fout):
 
     # Open all index files in the directory
     for index_file in Path(directory).iterdir():
-        files.append(open(index_file, "f"))
+        files.append(open(index_file, "r"))
 
     # TODO: Merge the indices in the files
 
@@ -100,7 +92,23 @@ def mergeTwoIndexFiles(index1, index2, fout):
     line1 = index1.readline().split(" ")
     line2 = index2.readline().split(" ")
 
-    
+    # Store half the available memory at the start of the indexing
+    halfmem = psutil.virtual_memory().available / 2
+
+    index = {}
+
+    if line1[0] < line2[0]:
+        searchLine = line1[0]
+        searchIndex = index2
+    else:
+        searchLine = line2[0]
+        searchIndex = index1
+
+    for line in searchIndex:
+        currentLine = line.split(" ")
+
+        if searchLine[0] == currentLine[0]:
+            index[searchLine[0]]
 
 
 # Merge two indices by adding the postings from index2 to the list of postings in index1
