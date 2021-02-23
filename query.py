@@ -8,6 +8,8 @@ import serializer as sz
 from posting import Posting
 
 # TODO: multithreading to search indices in different lexical ranges at the same time?
+# Returns a list of postings where all terms appeared
+# The score of each positing is the sum of the scores of the postings for each term
 def searchQuery(query, index, lex):
     query = tk.tokenize(query)
     results = dict()

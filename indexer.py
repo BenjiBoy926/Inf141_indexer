@@ -2,7 +2,7 @@ from bs4 import BeautifulSoup
 from Inf141_tokenizer import PartA as tk
 from stopwatch.stopwatch import Stopwatch
 from posting import Posting
-from pathlib import Path
+from pathlib2 import Path
 import json
 import os
 import sys
@@ -43,8 +43,7 @@ def indexJsonsInDirectory(directory, max_docs):
                 # Check if the size of the total index has grown beyond half the available RAM
                 if sys.getsizeof(total_index) >= halfmem:
                     print("Dumping current index to file")
-                    total_index = sorted(total_index.items())
-                    writeIndexToFile(total_index, f"indices/index{current_index}.txt")
+                    writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
                     total_index = {}
                     current_index += 1
 
@@ -60,19 +59,27 @@ def indexJsonsInDirectory(directory, max_docs):
         if total_docs >= max_docs > 0:
             break
 
-    total_index = sorted(total_index.items())
-    writeIndexToFile(total_index, f"indices/index{current_index}.txt")
+    writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
+
+    print("Merging indices...")
     mergeIndicesInDirectory("indices", "index.txt")
 
-    # Temporary until we get the index merge to work
-    writeIndexToFile(total_index, "index.txt")
 
+# Open the file at the directory and write the index into it
+def writeIndexToFileDirectory(index, index_dir):
+    print(f"Writing current index to file {index_dir}")
+    index_file = open(index_dir, "w")
+    writeIndexToFile(index, index_file)
+    index_file.close()
 
 # Write the index to the given file
+# The index file object passed to the function needs to already be open
 def writeIndexToFile(index, index_file):
-    index_file = open(index_file, "w")
-    index_file.write(sz.serializeIndex(index))
-    index_file.close()
+    index = sorted(index.items())
+
+    for token, postings in index:
+        index_file.write(sz.serializeIndexItem(token, postings))
+        index_file.write("\n")
 
 # Open all files in the directory as index files, merge them, and output them to the fout directory
 def mergeIndicesInDirectory(directory, fout):
@@ -82,33 +89,95 @@ def mergeIndicesInDirectory(directory, fout):
     for index_file in Path(directory).iterdir():
         files.append(open(index_file, "r"))
 
-    # TODO: Merge the indices in the files
+    # If there is only one file, output it to the given directory
+    if len(files) == 1:
+        print("Writing single index to output directory")
+        fout = open(fout, "w")
+        for line in files[0]:
+            fout.write(line)
+        fout.close()
+
+    # If there are two files, merge them and output them to the directory
+    elif len(files) == 2:
+        print("Merging two indices into output directory")
+        mergeTwoIndexFiles(files[0], files[1], fout)
+
+    # If there are many files, merge them all
+    else:
+        print(f"Merging partial_index0.txt and partial_index1.txt to {fout}.0")
+        mergeTwoIndexFiles(files[0], files[1], f"{fout}.0")
+
+        # Merge the first two, then merge THAT result with each other file
+        for i in range(2, len(files)):
+            print(f"Merging {fout}.{i % 2} and partial_index{i}.txt to {fout}.{(i + 1) % 2}")
+            outFile = open(f"{fout}.{i % 2}", "w")
+            mergeTwoIndexFiles(outFile, files[i], f"{fout}.{(i + 1) % 2}")
+            outFile.close()
+
+    # TODO: rename the last file output to to {fout}
 
     # Close all of the files
     for index_file in files:
         index_file.close()
 
 def mergeTwoIndexFiles(index1, index2, fout):
-    line1 = index1.readline().split(" ")
-    line2 = index2.readline().split(" ")
+    fout = open(fout, "w")
+
+    # Read the first lines in the index files
+    line1 = index1.readline()
+    line2 = index2.readline()
 
     # Store half the available memory at the start of the indexing
     halfmem = psutil.virtual_memory().available / 2
 
+    # Index stored in RAM
     index = {}
 
-    if line1[0] < line2[0]:
-        searchLine = line1[0]
-        searchIndex = index2
+    # Loop until the end of either file
+    while line1 != "" and line2 != "":
+        # Deserialize the current index items
+        line1 = sz.deserializeIndexItem(line1.split(" "))
+        line2 = sz.deserializeIndexItem(line2.split(" "))
+
+        # If the two words are equal, then add the word to the index with the postings lists merged
+        if line1[0] == line2[0]:
+            index[line1[0]] = line1[2].extend(line2[2])
+        # If the terms are unequal, add them to the index separately
+        else:
+            index[line1[0]] = line1[2]
+            index[line2[0]] = line2[2]
+
+        # If the index in RAM exceeds half available memory, dump it to the file
+        if sys.getsizeof(index) >= halfmem:
+            writeIndexToFile(index, fout)
+            index = {}
+
+        # Read the next lines in the files
+        line1 = index1.readline()
+        line2 = index2.readline()
+
+    # Read the rest of the longer file
+    if line1 != "":
+        longer_index = index1
     else:
-        searchLine = line2[0]
-        searchIndex = index1
+        longer_index = index2
 
-    for line in searchIndex:
-        currentLine = line.split(" ")
+    line1 = longer_index.readline()
 
-        if searchLine[0] == currentLine[0]:
-            index[searchLine[0]]
+    while line1 != "":
+        # Deserialize the current index items
+        line1 = sz.deserializeIndexItem(line1.split(" "))
+        index[line1[0]] = line1[2]
+
+        # If the index in RAM exceeds half available memory, dump it to the file
+        if sys.getsizeof(index) >= halfmem:
+            writeIndexToFile(index, fout)
+            index = {}
+
+        # Read the next line in the longer index
+        line1 = longer_index.readline()
+
+    fout.close()
 
 
 # Merge two indices by adding the postings from index2 to the list of postings in index1
@@ -150,7 +219,7 @@ def indexDocument(url, content):
 
 
 # Create an index of the index.
-# The index of the index maps the term to the character position in the file
+# The index of the index (lexicon) maps the term to the character position in the file
 def lexicon(index):
     lex = {}
     index = open(index, "r")
@@ -169,4 +238,4 @@ def lexicon(index):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    indexJsonsInDirectory("developer/DEV", 200)
+    indexJsonsInDirectory("developer/DEV", 1000)

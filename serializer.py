@@ -2,7 +2,7 @@ from posting import Posting
 
 def serializeIndexItem(token, postings):
     # Sort postings by document
-    postings = sorted(postings, key=lambda p: p.score)
+    postings = sorted(postings, key=lambda p: p.document)
 
     string = f"{token} {len(postings)}"
 
