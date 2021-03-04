@@ -20,11 +20,12 @@ def serializeIndex(index):
 
     return string
 
-def deserializeIndexItem(lineData):
+def deserializeIndexItem(line):
+    line = line.split(" ")
     postings = []
 
-    for i in range(2, len(lineData)):
+    for i in range(2, len(line)):
         if i % 2 == 0:
-            postings.append(Posting(lineData[i], lineData[i + 1]))
+            postings.append(Posting(line[i], int(line[i + 1])))
 
-    return lineData[0], lineData[1], postings
+    return line[0], line[1], postings

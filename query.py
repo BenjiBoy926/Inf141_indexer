@@ -3,9 +3,10 @@
 from Inf141_tokenizer import PartA as tk
 from collections import defaultdict
 from stopwatch.stopwatch import Stopwatch
-from indexer import lexicon
+from lexicon import readLexicon
 import serializer as sz
 from posting import Posting
+
 
 # TODO: multithreading to search indices in different lexical ranges at the same time?
 # Returns a list of postings where all terms appeared
@@ -15,12 +16,15 @@ def searchQuery(query, index, lex):
     results = dict()
 
     for token in query:
+        # (token, doc_freq, posting_list)
         indexItem = searchToken(token, index, lex)
+        # token --> posting_list
         results[indexItem[0]] = indexItem[2]
 
     # Return only urls of sites that have ALL the query words
     # At this point, results changes from a dictionary mapping the token-posting_list pairs to only a list of postings
     if len(query) > 1:
+        # [posting_list, posting_list, ... ]
         results = [postings for postings in results.values()]
         results = mergePostingLists(results)
     else:
@@ -36,23 +40,47 @@ def searchToken(token, index, lex):
         index.seek(lex[token])
 
         # Read the line and split it on spaces
-        line = index.readline().split(" ")
+        line = index.readline()
         return sz.deserializeIndexItem(line)
     else:
         return token, 0, []
 
-def mergePostingLists(postingLists):
+
+# Merge two posting lists together and sort them least to greatest
+def mergeTwoPostingLists(list1, list2):
     ret = []
+    i = 0
+
+    # Make sure list1 has the smaller list
+    if len(list1) > len(list2):
+        temp = list1
+        list1 = list2
+        list2 = temp
 
     # Loop through the postings in the first list
-    for post in postingLists[0]:
-        # Generate a list of true/false that are true if the positing is in the other list
-        urls_in_others = [post.document == other.document for other in postingLists[1:]]
+    for post in list1:
+        # Loop through the second list until a posting is found that is greater than or equal to the current post
+        while list2[i].document < post.document:
+            i += 1
 
-        # If the posting is in all other positing lists, add a new posting to the result
-        if all(urls_in_others):
-            score = sum([p.score for p in postingLists])
-            ret.append(Posting(post.document, score))
+        # If the two documents are equal, add it to the return list
+        if post.document == list2[i].document:
+            ret.append(Posting.merge(post, list2[i]))
+            i += 1
+
+    return sorted(ret, key=lambda p: p.document)
+
+
+def mergePostingLists(postingLists):
+    # Sort the postings lists smallest to largest
+    postingLists = sorted(postingLists, key=lambda l: len(l))
+
+    # Merge the first two postings lists
+    ret = mergeTwoPostingLists(postingLists[0], postingLists[1])
+
+    if len(postingLists) > 2:
+        for postingList in postingLists[2:]:
+            ret = mergeTwoPostingLists(ret, postingList)
 
     return ret
 
@@ -60,6 +88,7 @@ def mergePostingLists(postingLists):
 def resultString(query, results, t):
     string = f"Results for query: '{query}'\n"
     string += f"Completed in {t} secs\n"
+    string += f"Total results: {len(results)}\n"
 
     size = min(5, len(results))
 
@@ -81,8 +110,10 @@ if __name__ == "__main__":
     indexFile = open("index.txt", "r")
     watch = Stopwatch()
 
-    print("Building lexicon for faster searching...")
-    theLex = lexicon("index.txt")
+    print("Getting lexicon for faster searching...")
+    watch.restart()
+    theLex = readLexicon("lexicon.txt")
+    print(f"Finished reading lexicon in {watch.read()} secs")
 
     while userInput != "x":
         userInput = input("Enter the terms to search for (type 'x' to exit): ")

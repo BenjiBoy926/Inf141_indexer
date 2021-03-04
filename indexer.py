@@ -1,65 +1,60 @@
 from bs4 import BeautifulSoup
 from Inf141_tokenizer import PartA as tk
-from stopwatch.stopwatch import Stopwatch
 from posting import Posting
 from pathlib2 import Path
 import json
 import os
-import sys
 from collections import defaultdict
-import psutil
 import serializer as sz
 
 # TODO: store term and collection statistics at the top of the index (lecture 18)?
 # TODO: split inverted index into alphabet ranges (lecture 18)?
 # Returns a tuple where the first item is the number of documents loaded
 # and the second item is the index of all the documents
-def indexJsonsInDirectory(directory, max_docs):
-    index_file = open("index.txt", "w")
+def indexJsonsInDirectory(directory, max_docs, batch_size):
+    cleanupOldIndices()
+
     total_index = {}
 
     total_docs = 0
     current_index = 0
 
-    # Store half the available memory at the start of the indexing
-    halfmem = psutil.virtual_memory().available / 2
-
     # Iterate over all folders in the dev path
     for path in Path(directory).iterdir():
         # Iterate over all json files in the current folder
         for json_file in Path(path).iterdir():
-            try:
-                print(f"Processing file {json_file}")
+            print(f"Processing file {json_file}")
 
-                # Open the file and load it as a json
-                file = open(json_file, "r")
-                json_data = json.load(file)
-                file.close()
+            # Open the file and load it as a json
+            file = open(json_file, "r")
+            json_data = json.load(file)
+            file.close()
 
-                # Index the current json and merge it with the overall json
-                index = indexJson(json_data)
-                total_index = mergeIndices(total_index, index)
+            # Submit request to url
+            # If OK, index the document
 
-                # Check if the size of the total index has grown beyond half the available RAM
-                if sys.getsizeof(total_index) >= halfmem:
-                    print("Dumping current index to file")
-                    writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
-                    total_index = {}
-                    current_index += 1
+            # Index the current json and merge it with the overall json
+            index = indexJson(json_data)
+            total_index = mergeIndices(total_index, index)
 
-                # Increment documents loaded
-                total_docs += 1
+            # Increment documents loaded
+            total_docs += 1
 
-                if total_docs >= max_docs > 0:
-                    break
-            except Exception:
-                index_file.close()
-                raise
+            # If we have read in the batch size, offload the index
+            if total_docs % batch_size == 0:
+                writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
+                total_index = {}
+                current_index += 1
+
+            if total_docs >= max_docs > 0:
+                break
 
         if total_docs >= max_docs > 0:
             break
 
-    writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
+    # If there is some index left over at the end, write it out to the current index
+    if len(total_index) > 0:
+        writeIndexToFileDirectory(total_index, f"indices/index{current_index}.txt")
 
     print("Merging indices...")
     mergeIndicesInDirectory("indices", "index.txt")
@@ -71,6 +66,18 @@ def writeIndexToFileDirectory(index, index_dir):
     index_file = open(index_dir, "w")
     writeIndexToFile(index, index_file)
     index_file.close()
+
+def cleanupOldIndices():
+    for path in Path("indices").iterdir():
+        os.remove(path)
+
+    removeIfExists("index.txt")
+    removeIfExists("index.txt.0")
+    removeIfExists("index.txt.1")
+
+def removeIfExists(directory):
+    if os.path.exists(directory):
+        os.remove(directory)
 
 # Write the index to the given file
 # The index file object passed to the function needs to already be open
@@ -109,12 +116,16 @@ def mergeIndicesInDirectory(directory, fout):
 
         # Merge the first two, then merge THAT result with each other file
         for i in range(2, len(files)):
-            print(f"Merging {fout}.{i % 2} and partial_index{i}.txt to {fout}.{(i + 1) % 2}")
-            outFile = open(f"{fout}.{i % 2}", "w")
-            mergeTwoIndexFiles(outFile, files[i], f"{fout}.{(i + 1) % 2}")
+            iindex = f"{fout}.{i % 2}"
+            oindex = f"{fout}.{(i + 1) % 2}"
+
+            print(f"Merging {iindex} and partial_index{i}.txt to {oindex}")
+            outFile = open(f"{iindex}", "r")
+            mergeTwoIndexFiles(outFile, files[i], f"{oindex}")
             outFile.close()
 
-    # TODO: rename the last file output to to {fout}
+        # Rename the last file written to index.txt
+        os.rename(f"{fout}.{len(files) % 2}", fout)
 
     # Close all of the files
     for index_file in files:
@@ -127,34 +138,33 @@ def mergeTwoIndexFiles(index1, index2, fout):
     line1 = index1.readline()
     line2 = index2.readline()
 
-    # Store half the available memory at the start of the indexing
-    halfmem = psutil.virtual_memory().available / 2
-
-    # Index stored in RAM
-    index = {}
-
     # Loop until the end of either file
     while line1 != "" and line2 != "":
-        # Deserialize the current index items
-        line1 = sz.deserializeIndexItem(line1.split(" "))
-        line2 = sz.deserializeIndexItem(line2.split(" "))
+        # Read through the first file until a token is found that comes lexically after
+        # the current token in the second file
+        line2Data = line2.split(" ")
+        line1 = lexicalFileReader(index1, fout, line1, line2Data[0])
 
-        # If the two words are equal, then add the word to the index with the postings lists merged
-        if line1[0] == line2[0]:
-            index[line1[0]] = line1[2].extend(line2[2])
-        # If the terms are unequal, add them to the index separately
-        else:
-            index[line1[0]] = line1[2]
-            index[line2[0]] = line2[2]
+        # Now read through the SECOND file until a token is found that comes lexically after
+        # the current token in the FIRST file
+        line1Data = line1.split(" ")
+        line2 = lexicalFileReader(index2, fout, line2, line1Data[0])
 
-        # If the index in RAM exceeds half available memory, dump it to the file
-        if sys.getsizeof(index) >= halfmem:
-            writeIndexToFile(index, fout)
+        # If the entries are equal, we need to merge them
+        if line1Data[0] == line2Data[0]:
+            # Create a single-entry index with all postings from both files
             index = {}
+            item1 = sz.deserializeIndexItem(line1)
+            item2 = sz.deserializeIndexItem(line2)
+            item1[2].extend(item2[2])
+            index[item1[0]] = item1[2]
 
-        # Read the next lines in the files
-        line1 = index1.readline()
-        line2 = index2.readline()
+            # Write the single-entry index to the file. This sorts the posting lists for us
+            writeIndexToFile(index, fout)
+
+            # Update to the next line
+            line1 = index1.readline()
+            line2 = index2.readline()
 
     # Read the rest of the longer file
     if line1 != "":
@@ -165,20 +175,28 @@ def mergeTwoIndexFiles(index1, index2, fout):
     line1 = longer_index.readline()
 
     while line1 != "":
-        # Deserialize the current index items
-        line1 = sz.deserializeIndexItem(line1.split(" "))
-        index[line1[0]] = line1[2]
-
-        # If the index in RAM exceeds half available memory, dump it to the file
-        if sys.getsizeof(index) >= halfmem:
-            writeIndexToFile(index, fout)
-            index = {}
+        # Write the same line out the file
+        fout.write(line1)
 
         # Read the next line in the longer index
         line1 = longer_index.readline()
 
     fout.close()
 
+# Output each file in the in_file until a line is found in the in_file
+# that comes lexically after the sentinel value given
+# Return the last line read
+def lexicalFileReader(in_file, out_file, first_line, sentinel):
+    line = first_line
+    data = line.split(" ")
+
+    while line != "" and data[0] < sentinel:
+        out_file.write(line)
+        line = in_file.readline()
+        if line != "":
+            data = line.split(" ")
+
+    return line
 
 # Merge two indices by adding the postings from index2 to the list of postings in index1
 def mergeIndices(index1, index2):
@@ -195,6 +213,23 @@ def mergeIndices(index1, index2):
             new_index[token] = index2[token]
 
     return new_index
+
+
+def validateIndexFile(index):
+    tokens = set()
+    index = open(index, "r")
+
+    for line in index:
+        lineData = line.split(" ")
+
+        if lineData[0] not in tokens:
+            tokens.add(lineData[0])
+        else:
+            index.close()
+            return False
+
+    index.close()
+    return True
 
 
 def indexJson(j):
@@ -218,24 +253,11 @@ def indexDocument(url, content):
     return indices
 
 
-# Create an index of the index.
-# The index of the index (lexicon) maps the term to the character position in the file
-def lexicon(index):
-    lex = {}
-    index = open(index, "r")
-    line = "nonempty"
-
-    # Read the file until you read an empty line
-    while line != "":
-        pos = index.tell()
-        line = index.readline()
-        lineData = line.split(" ")
-        lex[lineData[0]] = pos
-
-    index.close()
-    return lex
-
-
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    indexJsonsInDirectory("developer/DEV", 1000)
+    indexJsonsInDirectory("developer/DEV", -1, 2000)
+
+    if validateIndexFile("index.txt"):
+        print("Index is valid!")
+    else:
+        print("Index is NOT VALID!")
