@@ -6,6 +6,18 @@ import json
 import os
 from collections import defaultdict
 import serializer as sz
+import lexicon as lex
+
+def main():
+    indexJsonsInDirectory("developer/DEV", -1, 2000)
+
+    if validateIndexFile("index.txt"):
+        print("Index is valid!")
+
+        # If the index is valid, build the lexicon
+        lex.main()
+    else:
+        print("Index is NOT VALID!")
 
 # TODO: store term and collection statistics at the top of the index (lecture 18)?
 # TODO: split inverted index into alphabet ranges (lecture 18)?
@@ -246,18 +258,44 @@ def indexDocument(url, content):
     words = tk.tokenize(soup.get_text())
     frequencies = tk.computeWordFrequencies(words)
 
+    # Get the text that is bolded
+    boldedText = getTextInTags(soup, "b")
+    boldedText += getTextInTags(soup, "strong")
+
+    # Get the text in the headers
+    headerText = getTextInTags(soup, "header")
+    for i in range(1, 7):
+        headerText += " "
+        headerText += getTextInTags(soup, f"h{i}")
+
+    # Get the text in the title
+    titleText = getTextInTags(soup, "title")
+
+    # Loop through all token-frequencies
     for token, frequency in frequencies.items():
-        # TODO: add the token positions when we add the posting? (better for ranking)
-        indices[token].append(Posting(url, frequency))
+        score = frequency
+
+        # Add to the score for its occurrences in important html tags
+        score += boldedText.count(token) * 5
+        score += headerText.count(token) * 10
+        score += titleText.count(token) * 15
+
+        # Add the posting to the current index
+        indices[token].append(Posting(url, score))
 
     return indices
+
+# Given a beautiful soup, find all tags in the soup and return a string with all the text in those tags
+def getTextInTags(soup, tag):
+    tags = soup.find_all(tag)
+    finalText = ""
+
+    for htmlTag in tags:
+        finalText += htmlTag.get_text()
+
+    return tk.tokenize(finalText)
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    indexJsonsInDirectory("developer/DEV", -1, 2000)
-
-    if validateIndexFile("index.txt"):
-        print("Index is valid!")
-    else:
-        print("Index is NOT VALID!")
+    main()

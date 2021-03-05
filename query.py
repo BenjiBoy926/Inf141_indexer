@@ -6,6 +6,9 @@ from stopwatch.stopwatch import Stopwatch
 from lexicon import readLexicon
 import serializer as sz
 from posting import Posting
+import sys
+import os
+import indexer as ind
 
 
 # TODO: multithreading to search indices in different lexical ranges at the same time?
@@ -20,6 +23,8 @@ def searchQuery(query, index, lex):
         indexItem = searchToken(token, index, lex)
         # token --> posting_list
         results[indexItem[0]] = indexItem[2]
+
+    # print(results)
 
     # Return only urls of sites that have ALL the query words
     # At this point, results changes from a dictionary mapping the token-posting_list pairs to only a list of postings
@@ -60,11 +65,11 @@ def mergeTwoPostingLists(list1, list2):
     # Loop through the postings in the first list
     for post in list1:
         # Loop through the second list until a posting is found that is greater than or equal to the current post
-        while list2[i].document < post.document:
+        while i < len(list2) and list2[i].document < post.document:
             i += 1
 
         # If the two documents are equal, add it to the return list
-        if post.document == list2[i].document:
+        if i < len(list2) and post.document == list2[i].document:
             ret.append(Posting.merge(post, list2[i]))
             i += 1
 
@@ -102,8 +107,16 @@ def resultString(query, results, t):
     return string
 
 
+def checkBuildIndex():
+    if not os.path.exists("index.txt"):
+        print("Index has not been built yet!  Building the index...")
+        ind.main()
+
+
 if __name__ == "__main__":
     print("Welcome to our searching engine!")
+
+    checkBuildIndex()
 
     userInput = "not x"
     fout = open("searchReport.txt", "w")
@@ -115,11 +128,18 @@ if __name__ == "__main__":
     theLex = readLexicon("lexicon.txt")
     print(f"Finished reading lexicon in {watch.read()} secs")
 
+    arg = 1
+
     while userInput != "x":
-        userInput = input("Enter the terms to search for (type 'x' to exit): ")
+        if arg < len(sys.argv):
+            print("Fetching query from command line")
+            userInput = sys.argv[arg]
+            arg += 1
+        else:
+            userInput = input("Enter the terms to search for (type 'x' to exit): ")
 
         if userInput != "x":
-            print("Searching...")
+            print(f"Searching query '{userInput}'...")
             watch.restart()
             output = searchQuery(userInput, indexFile, theLex)
             output = resultString(userInput, output, watch.read())

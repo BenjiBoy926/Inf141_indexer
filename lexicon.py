@@ -40,8 +40,12 @@ def readLexicon(lex_file):
     return lex
 
 
-if __name__ == "__main__":
+def main():
     print("Building lexicon...")
     theLex = lexicon("index.txt")
     print("Writing lexicon to file...")
     writeLexicon(theLex, "lexicon.txt")
+
+
+if __name__ == "__main__":
+    main()
