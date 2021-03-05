@@ -1,0 +1,22 @@
+INF 141 SEARCH ENGINE
+
+Run the file "query.py" with a python command using the terminal using:
+
+-- python3 <query.py dir>
+
+where <query.py dir> is the path to the "query.py" file
+
+You may, if you desire, pass additional parameters to the shell command after <query.py dir>
+
+-- python3 <query.py dir> <query1> <query2> ... <queryN>
+
+The search engine will automatically search each term that you pass in as a shell parameter when the engine starts
+(NOTE: remember that if you want to input a multi-word query from the command line,
+surround the query in "double quotes")
+
+Once the program finishes running the parameters received form the command line,
+you will be prompted to enter the terms for your search:
+
+-- Enter the terms to search for (type 'x' to exit):
+
+From here, simply enter the terms you want to search for and hit "Enter"!
