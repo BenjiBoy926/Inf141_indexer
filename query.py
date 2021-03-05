@@ -9,7 +9,9 @@ import os
 import sys
 import indexer as ind
 import lexicon as lex
+import math
 
+corpusSize = 55393
 
 # TODO: multithreading to search indices in different lexical ranges at the same time?
 # Returns a list of postings where all terms appeared
@@ -25,9 +27,19 @@ def searchQuery(query, index, lexicon):
     # AND the postings lists
     intersectIndexItems(indexItems)
 
-    # Compute the tf-idf
+    # Convert the score field on each posting to reflect the tf-idf instead of weighted term frequency
+    for item in indexItems:
+        convertTfIdf(item[1], item[2])
 
-    return sorted(indexItems[0][2], key=lambda t: t.score, reverse=True)
+    # Add all postings to a single list with tf-idf scores added together
+    results = []
+    for i in range(len(indexItems[0][2])):
+        summation = 0
+        for item in indexItems:
+            summation += item[2][i].score
+        results.append(Posting(indexItems[0][2][i].document, summation))
+
+    return sorted(results, key=lambda t: t.score, reverse=True)
 
 
 def searchToken(token, index, lexicon):
@@ -88,6 +100,13 @@ def intersectTwoPostingsLists(list1, list2):
         for i in range(len(list2)):
             del list2[i][index:]
 
+def convertTfIdf(docFreq, postingList):
+    for i in range(len(postingList)):
+        score = postingList[i].score
+        postingList[i].score = tfIdf(score, docFreq)
+
+def tfIdf(tf, df):
+    return (1 + math.log(tf)) * math.log(corpusSize/df, 2)
 
 def resultString(query, results, t):
     string = f"Results for query: '{query}'\n"

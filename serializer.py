@@ -28,4 +28,4 @@ def deserializeIndexItem(line):
         if i % 2 == 0:
             postings.append(Posting(line[i], int(line[i + 1])))
 
-    return line[0], line[1], postings
+    return line[0], int(line[1]), postings
