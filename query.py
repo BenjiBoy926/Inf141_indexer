@@ -17,33 +17,17 @@ import lexicon as lex
 def searchQuery(query, index, lexicon):
     query = tk.tokenize(query)
     indexItems = []
-    tokenDocFreq = dict()
-    postingList = []
 
     for token in query:
         # (token, doc_freq, posting_list)
         indexItems.append(searchToken(token, index, lexicon))
 
-        indexItem = searchToken(token, index, lexicon)
-        # token --> doc_freq
-        tokenDocFreq[indexItem[0]] = indexItem[1]
-        # List of postings
-        postingList.append(indexItem[2])
-
     # AND the postings lists
     intersectIndexItems(indexItems)
 
-    # Return only urls of sites that have ALL the query words
-    # At this point, list with lists as elements changes to a single list of postings
-    if len(query) > 1:
-        # [posting_list, posting_list, ... ]
-        postingList = mergePostingLists(postingList)
-    else:
-        postingList = postingList[0]
-
     # Compute the tf-idf
 
-    return sorted(postingList, key=lambda t: t.score, reverse=True)
+    return sorted(indexItems[0][2], key=lambda t: t.score, reverse=True)
 
 
 def searchToken(token, index, lexicon):
@@ -70,15 +54,6 @@ def intersectIndexItems(indexItems):
             for item in indexItems[2:]:
                 intersectTwoPostingsLists(prevItems, [item[2]])
                 prevItems.append(item[2])
-
-        # i = 0
-        # for item in indexItems:
-        #     print(f"Outputting to file post{i}.txt")
-        #     fileOut = open(f"post{i}.txt", "w")
-        #     for post in item[2]:
-        #         fileOut.write(f"{post.document}\n")
-        #     fileOut.close()
-        #     i += 1
 
 
 def intersectTwoPostingsLists(list1, list2):
@@ -112,49 +87,6 @@ def intersectTwoPostingsLists(list1, list2):
     if index < len(list2[0]):
         for i in range(len(list2)):
             del list2[i][index:]
-
-# Merge two posting lists together and sort them least to greatest
-def mergeTwoPostingLists(list1, list2):
-    newList1 = []
-    newList2 = []
-    i = 0
-
-    # Make sure list1 has the smaller list
-    if len(list1) > len(list2):
-        temp = list1
-        list1 = list2
-        list2 = temp
-
-    # Loop through the postings in the first list
-    for post in list1:
-        # Loop through the second list until a posting is found that is greater than or equal to the current post
-        while i < len(list2) and list2[i].document < post.document:
-            i += 1
-
-        # If the two documents are equal, add it to the return list
-        if i < len(list2) and post.document == list2[i].document:
-            newList1.append(post)
-            newList2.append(list2[i])
-            i += 1
-
-    return newList1, newList2
-
-
-def mergePostingLists(postingLists):
-    # Sort the postings lists smallest to largest
-    postingLists = sorted(postingLists, key=lambda l: len(l))
-
-    # Merge the first two postings lists
-    ret = mergeTwoPostingLists(postingLists[0], postingLists[1])
-
-    postingLists[0] = ret[0]
-    postingLists[1] = ret[1]
-
-    if len(postingLists) > 2:
-        for postingList in postingLists[2:]:
-            ret = mergeTwoPostingLists(ret, postingList)
-
-    return ret
 
 
 def resultString(query, results, t):
